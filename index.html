@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PrepPortal | Aptitude, DSA & CS Fundamentals</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+    <div id="app">
+        <!-- Header -->
+        <header class="glass-header">
+            <div class="logo">
+                <span class="gradient-text">Prep</span>Portal
+            </div>
+            <nav id="main-nav" style="display: flex; align-items: center; gap: 0.5rem;">
+                <button class="nav-btn" onclick="toggleTheme()" id="theme-btn"
+                    style="margin-right: 1rem; font-size: 1.2rem;" title="Toggle Light/Dark Mode">☀️</button>
+                <button class="nav-btn active" data-target="dashboard" onclick="renderDashboard()">Dashboard</button>
+                <button class="nav-btn" data-target="mock" onclick="renderMockBuilder()">Mock Tests</button>
+                <button class="nav-btn" data-target="enrolled" onclick="renderEnrolledStudents()">Enrolled Students</button>
+                <button class="nav-btn" data-target="teacher-tests" onclick="renderStudentTests()">Teacher Tests</button>
+                <button class="nav-btn" data-target="profile" onclick="renderProfile()">Profile</button>
+                <button class="nav-btn" data-target="signin" onclick="renderAuth('signin')">Sign In</button>
+                <button class="btn-primary" data-target="signup" style="margin-top: 0; padding: 0.5rem 1rem;"
+                    onclick="renderAuth('signup')">Sign Up</button>
+            </nav>
+        </header>
+
+        <!-- Main Content Area -->
+        <main id="main-content">
+            <!-- Dynamic Content Injected Here -->
+        </main>
+
+        <!-- Footer -->
+        <footer class="glass-footer">
+            <p>&copy; 2026 PrepPortal.PrepPortal for students by HTG.</p>
+        </footer>
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="app.js"></script>
+</body>
+
+</html>
