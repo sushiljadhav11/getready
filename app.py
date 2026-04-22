@@ -29,14 +29,14 @@ def signup():
     conn = get_db_connection()
     c = conn.cursor()
     try:
-        c.execute('INSERT INTO users (name, email, password) VALUES (?, ?, ?)', (name, email, hashed_password))
+        c.execute('INSERT INTO users (name, email, password, status) VALUES (?, ?, ?, ?)', (name, email, hashed_password, 'pending'))
         conn.commit()
     except Exception as e:
         conn.close()
         return jsonify({"error": "Email already exists or DB error."}), 409
     
     conn.close()
-    return jsonify({"message": "User registered successfully."}), 201
+    return jsonify({"message": "Registration submitted. Please wait for teacher approval before logging in."}), 201
 
 @app.route('/api/login', methods=['POST'])
 def login():
@@ -60,6 +60,10 @@ def login():
     conn.close()
 
     if user and check_password_hash(user['password'], password):
+        if user['status'] == 'pending':
+            return jsonify({"error": "PENDING_APPROVAL", "message": "Your account is pending teacher approval. Please wait."}), 403
+        if user['status'] == 'rejected':
+            return jsonify({"error": "Your account has been rejected. Please contact the teacher."}), 403
         return jsonify({
             "message": "Login successful.",
             "user": {
@@ -75,11 +79,49 @@ def login():
 @app.route('/api/students', methods=['GET'])
 def get_students():
     conn = get_db_connection()
-    users = conn.execute('SELECT id, name, email, enrolledDate FROM users').fetchall()
+    users = conn.execute("SELECT id, name, email, enrolledDate FROM users WHERE status = 'active'").fetchall()
     conn.close()
 
     students_list = [dict(row) for row in users]
     return jsonify(students_list), 200
+
+@app.route('/api/students/pending', methods=['GET'])
+def get_pending_students():
+    conn = get_db_connection()
+    users = conn.execute("SELECT id, name, email, enrolledDate FROM users WHERE status = 'pending' ORDER BY enrolledDate ASC").fetchall()
+    conn.close()
+    return jsonify([dict(row) for row in users]), 200
+
+@app.route('/api/students/<int:student_id>/approve', methods=['POST'])
+def approve_student(student_id):
+    conn = get_db_connection()
+    try:
+        conn.execute("UPDATE users SET status = 'active' WHERE id = ?", (student_id,))
+        conn.commit()
+    except Exception as e:
+        conn.close()
+        return jsonify({"error": str(e)}), 500
+    conn.close()
+    return jsonify({"message": "Student approved successfully."}), 200
+
+@app.route('/api/students/<int:student_id>', methods=['DELETE'])
+def delete_student(student_id):
+    conn = get_db_connection()
+    c = conn.cursor()
+    try:
+        # Delete related records
+        c.execute('DELETE FROM leaderboard WHERE user_id = ?', (student_id,))
+        c.execute('DELETE FROM dsa_progress WHERE user_id = ?', (student_id,))
+        c.execute('DELETE FROM teacher_test_results WHERE user_id = ?', (student_id,))
+        # Delete the user
+        c.execute('DELETE FROM users WHERE id = ?', (student_id,))
+        conn.commit()
+    except Exception as e:
+        conn.close()
+        return jsonify({"error": str(e)}), 500
+    conn.close()
+    return jsonify({"message": "Student deleted successfully."}), 200
+
 
 @app.route('/api/questions/mock', methods=['GET'])
 def get_mock_questions():
@@ -296,6 +338,84 @@ def get_teacher_test_results(test_id):
     ''', (test_id,)).fetchall()
     conn.close()
     return jsonify([dict(r) for r in rows]), 200
+
+@app.route('/api/teacher/tests/<int:test_id>', methods=['DELETE'])
+def delete_teacher_test(test_id):
+    conn = get_db_connection()
+    try:
+        conn.execute('DELETE FROM teacher_test_results WHERE test_id = ?', (test_id,))
+        conn.execute('DELETE FROM teacher_tests WHERE id = ?', (test_id,))
+        conn.commit()
+    except Exception as e:
+        conn.close()
+        return jsonify({"error": str(e)}), 500
+    conn.close()
+    return jsonify({"message": "Test deleted successfully."}), 200
+
+@app.route('/api/leaderboard/global', methods=['GET'])
+def get_global_leaderboard():
+    conn = get_db_connection()
+
+    # Get all students
+    users = conn.execute('SELECT id, name, email FROM users').fetchall()
+
+    results = []
+    for user in users:
+        uid = user['id']
+
+        # DSA completed questions count
+        dsa_count = conn.execute(
+            'SELECT COUNT(*) as cnt FROM dsa_progress WHERE user_id = ? AND is_done = 1', (uid,)
+        ).fetchone()['cnt']
+
+        # Aptitude: unique topics attempted (excluding CoreCS notes & mock)
+        apt_topics = conn.execute(
+            "SELECT COUNT(DISTINCT topic_id) as cnt FROM leaderboard WHERE user_id = ? AND topic_id NOT LIKE '%-notes' AND topic_id != 'mock-exam-mixed'",
+            (uid,)
+        ).fetchone()['cnt']
+
+        # Core CS: unique note topics tested
+        cs_topics = conn.execute(
+            "SELECT COUNT(DISTINCT topic_id) as cnt FROM leaderboard WHERE user_id = ? AND topic_id LIKE '%-notes'",
+            (uid,)
+        ).fetchone()['cnt']
+
+        # Mock exams taken
+        mock_count = conn.execute(
+            "SELECT COUNT(*) as cnt FROM leaderboard WHERE user_id = ? AND topic_id = 'mock-exam-mixed'",
+            (uid,)
+        ).fetchone()['cnt']
+
+        # Teacher tests completed
+        teacher_tests = conn.execute(
+            'SELECT COUNT(*) as cnt FROM teacher_test_results WHERE user_id = ?', (uid,)
+        ).fetchone()['cnt']
+
+        # Compute overall score:
+        # DSA: each question worth 2 pts (max 75 * 2 = 150)
+        # Aptitude topics: each worth 10 pts (max 11 * 10 = 110)
+        # Core CS topics: each worth 15 pts (max 4 * 15 = 60)
+        # Mock exams: each worth 5 pts
+        # Teacher tests: each worth 8 pts
+        total_score = (dsa_count * 2) + (apt_topics * 10) + (cs_topics * 15) + (mock_count * 5) + (teacher_tests * 8)
+
+        results.append({
+            'name': user['name'],
+            'email': user['email'],
+            'dsa_completed': dsa_count,
+            'aptitude_topics': apt_topics,
+            'cs_topics': cs_topics,
+            'mock_exams': mock_count,
+            'teacher_tests': teacher_tests,
+            'total_score': total_score
+        })
+
+    conn.close()
+
+    # Sort by total_score descending
+    results.sort(key=lambda x: x['total_score'], reverse=True)
+    return jsonify(results), 200
+
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)

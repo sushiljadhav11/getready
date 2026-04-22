@@ -17,9 +17,19 @@ def init_db():
             name TEXT NOT NULL,
             email TEXT UNIQUE NOT NULL,
             password TEXT NOT NULL,
-            enrolledDate DATE DEFAULT CURRENT_DATE
+            enrolledDate DATE DEFAULT CURRENT_DATE,
+            status TEXT NOT NULL DEFAULT 'pending'
         )
     ''')
+
+    # Migrate existing DB: add status column if it doesn't exist
+    try:
+        c.execute("ALTER TABLE users ADD COLUMN status TEXT NOT NULL DEFAULT 'active'")
+        # Set all existing rows (before this migration) to active
+        c.execute("UPDATE users SET status = 'active' WHERE status IS NULL OR status = ''")
+    except Exception:
+        pass  # Column already exists, no action needed
+
 
     # Create Questions Table
     c.execute('''

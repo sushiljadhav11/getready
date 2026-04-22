@@ -1006,7 +1006,7 @@ window.renderProfile = function() {
                 <p><strong>Name:</strong> ${loggedInUser.name}</p>
                 <p><strong>Email:</strong> ${loggedInUser.email}</p>
                 <div style="margin-top: 2rem; border-top: 1px solid var(--border-color); padding-top: 1.5rem;">
-                    <button class="btn-primary" style="background: var(--accent-danger);" onclick="logout()">Logout</button>
+                    <button class="btn-danger" onclick="logout()">&#x2192; Sign Out</button>
                 </div>
             </div>
         </div>
@@ -1098,13 +1098,49 @@ window.handleAuthSubmit = async function(e) {
         const data = await res.json();
         
         if (!res.ok) {
+            // Special handling for pending approval
+            if (data.error === 'PENDING_APPROVAL') {
+                mainContent.innerHTML = `
+                    <div class="fade-in auth-container">
+                        <div class="glass-panel auth-card" style="text-align: center; padding: 3rem 2rem;">
+                            <div style="font-size: 3.5rem; margin-bottom: 1rem;">🔒</div>
+                            <h2 style="margin-bottom: 0.75rem;">Approval Pending</h2>
+                            <p style="color: var(--text-secondary); margin-bottom: 1.5rem; line-height: 1.6;">
+                                Your account is <strong style="color: #f59e0b;">awaiting teacher approval.</strong><br><br>
+                                You cannot log in until a teacher accepts your request. Please check back later.
+                            </p>
+                            <div style="background: rgba(245,158,11,0.08); border: 1px solid rgba(245,158,11,0.3); border-radius: 8px; padding: 1rem; margin-bottom: 2rem; font-size: 0.9rem; color: var(--text-secondary);">
+                                ⏳ Your request is in the queue. The teacher will review it soon.
+                            </div>
+                            <button class="btn-primary" onclick="renderAuth('signin')" style="width: 100%;">Try Again Later</button>
+                        </div>
+                    </div>
+                `;
+                return;
+            }
             errorDiv.innerText = data.error || 'Authentication failed';
             return;
         }
 
         if (type === 'signup') {
-            alert('Signup successful! Please sign in.');
-            renderAuth('signin');
+            // Show a pending approval screen instead of plain alert
+            mainContent.innerHTML = `
+                <div class="fade-in auth-container">
+                    <div class="glass-panel auth-card" style="text-align: center; padding: 3rem 2rem;">
+                        <div style="font-size: 3.5rem; margin-bottom: 1rem;">⏳</div>
+                        <h2 style="margin-bottom: 0.75rem;">Request Submitted!</h2>
+                        <p style="color: var(--text-secondary); margin-bottom: 1.5rem; line-height: 1.6;">
+                            Your account for <strong style="color: var(--accent-primary);">${payload.name || 'you'}</strong> has been created and is
+                            <strong style="color: #f59e0b;"> awaiting teacher approval.</strong><br><br>
+                            You will be able to log in once the teacher reviews and accepts your request.
+                        </p>
+                        <div style="background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.3); border-radius: 8px; padding: 1rem; margin-bottom: 2rem; font-size: 0.9rem; color: var(--text-secondary);">
+                            📌 Please check back later or contact your teacher to speed up the process.
+                        </div>
+                        <button class="btn-primary" onclick="renderAuth('signin')" style="width: 100%;">Back to Sign In</button>
+                    </div>
+                </div>
+            `;
         } else {
             loggedInUser = data.user;
             document.querySelectorAll('.nav-btn, .btn-primary').forEach(btn => {
@@ -1118,9 +1154,10 @@ window.handleAuthSubmit = async function(e) {
             document.querySelectorAll('.nav-btn').forEach(btn => btn.classList.remove('active'));
             
             if (loggedInUser.role === 'teacher') {
-                // Tailor Teacher UI
+                // Tailor Teacher UI — hide student nav
                 document.querySelector('.nav-btn[data-target="dashboard"]').style.display = 'none';
                 document.querySelector('.nav-btn[data-target="mock"]').style.display = 'none';
+                document.querySelector('.nav-btn[data-target="leaderboard"]').style.display = 'none';
                 document.querySelector('.nav-btn[data-target="profile"]').style.display = 'none';
                 
                 const enrolledBtn = document.querySelector('.nav-btn[data-target="enrolled"]');
@@ -1143,6 +1180,170 @@ document.querySelectorAll('.nav-btn, .btn-primary').forEach(btn => {
         btn.style.display = 'none';
     }
 });
+
+// ── Global Task Completion Leaderboard ──────────────────────────────────
+
+window.renderGlobalLeaderboard = async function() {
+    if (!loggedInUser) return renderAuth('signin');
+    resetTimer();
+    document.querySelectorAll('.nav-btn').forEach(btn => btn.classList.remove('active'));
+    document.querySelector('.nav-btn[data-target="leaderboard"]').classList.add('active');
+
+    mainContent.innerHTML = `
+        <div class="fade-in" style="max-width: 960px; margin: 0 auto;">
+            <div style="text-align: center; margin-bottom: 2.5rem;">
+                <div style="font-size: 3rem; margin-bottom: 0.5rem;">🏆</div>
+                <h2 style="font-size: 2rem; margin: 0; background: linear-gradient(135deg, #f59e0b, #ef4444, #a855f7); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">Global Leaderboard</h2>
+                <p style="color: var(--text-secondary); margin-top: 0.5rem;">Overall task completion ranking across all modules</p>
+            </div>
+
+            <div class="glass-panel" style="padding: 1rem 1.5rem; margin-bottom: 1.5rem; display: flex; flex-wrap: wrap; gap: 1.5rem; justify-content: center;">
+                <div style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; color: var(--text-secondary);">
+                    <span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:#10b981;"></span> DSA: 2 pts/question
+                </div>
+                <div style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; color: var(--text-secondary);">
+                    <span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:#06b6d4;"></span> Aptitude Topics: 10 pts each
+                </div>
+                <div style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; color: var(--text-secondary);">
+                    <span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:#6366f1;"></span> Core CS Topics: 15 pts each
+                </div>
+                <div style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; color: var(--text-secondary);">
+                    <span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:#f59e0b;"></span> Mock Exams: 5 pts each
+                </div>
+                <div style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; color: var(--text-secondary);">
+                    <span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:#ec4899;"></span> Teacher Tests: 8 pts each
+                </div>
+            </div>
+
+            <div id="global-leaderboard-content"><p style="text-align:center; color: var(--text-secondary); padding: 3rem;">Loading rankings...</p></div>
+        </div>
+    `;
+
+    try {
+        const res = await fetch(`${API_URL}/leaderboard/global`);
+        const data = await res.json();
+        const container = document.getElementById('global-leaderboard-content');
+
+        // Max possible scores for progress bars
+        const MAX_SCORE = 150 + 110 + 60 + 50 + 40; // generous upper bound
+
+        if (data.length === 0) {
+            container.innerHTML = `<div class="glass-panel" style="text-align:center; padding: 3rem;">
+                <div style="font-size: 3rem;">🌱</div>
+                <p style="margin-top: 1rem; color: var(--text-secondary);">No students have completed any tasks yet. Be the first!</p>
+            </div>`;
+            return;
+        }
+
+        const medals = ['🥇', '🥈', '🥉'];
+        let html = `<div style="display: flex; flex-direction: column; gap: 1rem;">`;
+
+        data.forEach((entry, idx) => {
+            const isMe = entry.email === loggedInUser.email;
+            const rank = idx + 1;
+            const medal = medals[idx] || `#${rank}`;
+            const scorePercent = Math.min(Math.round((entry.total_score / MAX_SCORE) * 100), 100);
+
+            const dsaPct = Math.min(Math.round((entry.dsa_completed / 75) * 100), 100);
+            const aptPct = Math.min(Math.round((entry.aptitude_topics / 11) * 100), 100);
+            const csPct = Math.min(Math.round((entry.cs_topics / 4) * 100), 100);
+
+            const borderStyle = isMe
+                ? 'border: 2px solid var(--accent-primary); box-shadow: 0 0 24px rgba(6, 182, 212, 0.3);'
+                : idx < 3
+                    ? 'border: 1px solid rgba(245, 158, 11, 0.4);'
+                    : '';
+
+            const rankColor = idx === 0 ? '#f59e0b' : idx === 1 ? '#94a3b8' : idx === 2 ? '#cd7f32' : 'var(--text-secondary)';
+
+            html += `
+                <div class="glass-panel" style="padding: 1.25rem 1.5rem; ${borderStyle} transition: transform 0.2s, box-shadow 0.2s;" 
+                     onmouseover="this.style.transform='translateY(-2px)'" 
+                     onmouseout="this.style.transform='translateY(0)'">
+                    
+                    <div style="display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;">
+                        <!-- Rank -->
+                        <div style="min-width: 48px; text-align: center; font-size: ${rank <= 3 ? '2rem' : '1.25rem'}; font-weight: bold; color: ${rankColor};">
+                            ${medal}
+                        </div>
+
+                        <!-- Name & Score -->
+                        <div style="flex: 1; min-width: 180px;">
+                            <div style="display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; margin-bottom: 0.3rem;">
+                                <span style="font-weight: 700; font-size: 1.05rem;">${entry.name}</span>
+                                ${isMe ? `<span style="background: var(--accent-primary); color: #fff; font-size: 0.7rem; padding: 0.1rem 0.5rem; border-radius: 12px; font-weight: 600;">YOU</span>` : ''}
+                            </div>
+                            <!-- Overall progress bar -->
+                            <div style="height: 6px; background: rgba(255,255,255,0.1); border-radius: 3px; overflow: hidden; width: 100%; max-width: 320px;">
+                                <div style="height: 100%; width: ${scorePercent}%; background: linear-gradient(90deg, #06b6d4, #a855f7); border-radius: 3px; transition: width 1s ease;"></div>
+                            </div>
+                        </div>
+
+                        <!-- Total Score Badge -->
+                        <div style="text-align: right; min-width: 80px;">
+                            <div style="font-size: 1.5rem; font-weight: 800; color: ${rankColor}; line-height: 1;">${entry.total_score}</div>
+                            <div style="font-size: 0.7rem; color: var(--text-secondary);">total pts</div>
+                        </div>
+                    </div>
+
+                    <!-- Category breakdown -->
+                    <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 0.75rem; margin-top: 1rem;">
+                        
+                        <div style="background: rgba(16,185,129,0.08); border-radius: 8px; padding: 0.5rem 0.75rem;">
+                            <div style="font-size: 0.7rem; color: #10b981; font-weight: 600; margin-bottom: 0.3rem;">💻 DSA</div>
+                            <div style="height: 4px; background: rgba(255,255,255,0.08); border-radius: 2px; overflow: hidden;">
+                                <div class="lb-bar" style="height:100%; width:${dsaPct}%; background:#10b981; border-radius:2px; transition:width 1.2s ease;"></div>
+                            </div>
+                            <div style="font-size: 0.8rem; margin-top: 0.3rem; color: var(--text-primary);">${entry.dsa_completed} / 75</div>
+                        </div>
+
+                        <div style="background: rgba(6,182,212,0.08); border-radius: 8px; padding: 0.5rem 0.75rem;">
+                            <div style="font-size: 0.7rem; color: #06b6d4; font-weight: 600; margin-bottom: 0.3rem;">📊 Aptitude</div>
+                            <div style="height: 4px; background: rgba(255,255,255,0.08); border-radius: 2px; overflow: hidden;">
+                                <div class="lb-bar" style="height:100%; width:${aptPct}%; background:#06b6d4; border-radius:2px; transition:width 1.2s ease;"></div>
+                            </div>
+                            <div style="font-size: 0.8rem; margin-top: 0.3rem; color: var(--text-primary);">${entry.aptitude_topics} / 11 topics</div>
+                        </div>
+
+                        <div style="background: rgba(99,102,241,0.08); border-radius: 8px; padding: 0.5rem 0.75rem;">
+                            <div style="font-size: 0.7rem; color: #6366f1; font-weight: 600; margin-bottom: 0.3rem;">⚙️ Core CS</div>
+                            <div style="height: 4px; background: rgba(255,255,255,0.08); border-radius: 2px; overflow: hidden;">
+                                <div class="lb-bar" style="height:100%; width:${csPct}%; background:#6366f1; border-radius:2px; transition:width 1.2s ease;"></div>
+                            </div>
+                            <div style="font-size: 0.8rem; margin-top: 0.3rem; color: var(--text-primary);">${entry.cs_topics} / 4 topics</div>
+                        </div>
+
+                        <div style="background: rgba(245,158,11,0.08); border-radius: 8px; padding: 0.5rem 0.75rem;">
+                            <div style="font-size: 0.7rem; color: #f59e0b; font-weight: 600; margin-bottom: 0.3rem;">🧪 Mocks & Tests</div>
+                            <div style="font-size: 0.8rem; margin-top: 0.3rem; color: var(--text-primary);">${entry.mock_exams} mock · ${entry.teacher_tests} teacher</div>
+                        </div>
+
+                    </div>
+                </div>
+            `;
+        });
+
+        html += `</div>`;
+        container.innerHTML = html;
+
+        // Animate bars on next frame
+        setTimeout(() => {
+            container.querySelectorAll('.lb-bar').forEach(bar => {
+                const target = bar.style.width;
+                bar.style.width = '0%';
+                requestAnimationFrame(() => { bar.style.width = target; });
+            });
+        }, 100);
+
+    } catch (e) {
+        document.getElementById('global-leaderboard-content').innerHTML = `
+            <div class="glass-panel" style="text-align:center; padding: 2rem; color: var(--accent-danger);">
+                Failed to load leaderboard. Please try again.
+            </div>`;
+    }
+};
+
+
 
 window.toggleTheme = function() {
     const isLight = document.body.classList.toggle('light-theme');
@@ -1167,12 +1368,31 @@ document.addEventListener('DOMContentLoaded', () => {
 // -- Teacher Portal --
 window.renderTeacherDashboard = async function(activeTab) {
     activeTab = activeTab || 'students';
+
+    // Pre-fetch pending count for badge
+    let pendingCount = 0;
+    try {
+        const pr = await fetch(`${API_URL}/students/pending`);
+        const pd = await pr.json();
+        pendingCount = pd.length;
+    } catch(_) {}
+
+    const pendingBadge = pendingCount > 0
+        ? `<span style="background:var(--accent-danger);color:#fff;border-radius:12px;font-size:0.7rem;padding:0.1rem 0.5rem;margin-left:0.4rem;font-weight:700;">${pendingCount}</span>`
+        : '';
+
     mainContent.innerHTML = `
         <div class="fade-in">
-            <h2 style="margin-bottom:0.5rem;">Teacher Portal</h2>
-            <p style="color:var(--text-secondary);margin-bottom:1.5rem;">Manage students and create custom tests.</p>
-            <div class="tabs-nav" style="margin-bottom:1.5rem;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px; flex-wrap:wrap; gap:12px;">
+                <div>
+                    <h2 style="margin-bottom:2px;">Teacher Portal</h2>
+                    <p style="color:var(--text-secondary); margin:0;">Manage students and create custom tests.</p>
+                </div>
+                <button class="btn-danger" onclick="logout()" style="margin-top:0;">&#x2192; Sign Out</button>
+            </div>
+            <div class="tabs-nav" style="margin-top:1.5rem; margin-bottom:1.5rem;">
                 <button class="tab-btn ${activeTab==='students'?'active':''}" onclick="renderTeacherDashboard('students')">Students</button>
+                <button class="tab-btn ${activeTab==='pending'?'active':''}" onclick="renderTeacherDashboard('pending')">Pending Requests${pendingBadge}</button>
                 <button class="tab-btn ${activeTab==='tests'?'active':''}" onclick="renderTeacherDashboard('tests')">My Tests</button>
                 <button class="tab-btn ${activeTab==='create'?'active':''}" onclick="renderTeacherDashboard('create')">Create Test</button>
             </div>
@@ -1180,8 +1400,69 @@ window.renderTeacherDashboard = async function(activeTab) {
         </div>
     `;
     if (activeTab === 'students') await loadTeacherStudents();
+    else if (activeTab === 'pending') await loadPendingStudents();
     else if (activeTab === 'tests') await loadTeacherTests();
     else if (activeTab === 'create') buildCreateTestForm();
+}
+
+async function loadPendingStudents() {
+    const container = document.getElementById('teacher-tab-content');
+    try {
+        const res = await fetch(`${API_URL}/students/pending`);
+        const students = await res.json();
+
+        if (students.length === 0) {
+            container.innerHTML = `
+                <div class="glass-panel" style="text-align:center; padding: 3rem;">
+                    <div style="font-size: 3rem; margin-bottom: 1rem;">✅</div>
+                    <h3>All caught up!</h3>
+                    <p style="color:var(--text-secondary); margin-top:0.5rem;">No pending student requests at the moment.</p>
+                </div>`;
+            return;
+        }
+
+        let html = `
+            <div style="margin-bottom:1rem; color:var(--text-secondary); font-size:0.9rem;">
+                <strong style="color:var(--accent-primary);">${students.length}</strong> student${students.length > 1 ? 's' : ''} waiting for approval.
+            </div>
+            <div style="display:flex; flex-direction:column; gap:0.75rem;">`;
+
+        students.forEach(s => {
+            html += `
+                <div class="glass-panel" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:1rem;padding:1rem 1.25rem;border-left:3px solid var(--color-warning);">
+                    <div style="display:flex;align-items:center;gap:12px;">
+                        <div style="width:36px;height:36px;border-radius:50%;background:var(--color-warning);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;color:#000;flex-shrink:0;">
+                            ${s.name.charAt(0).toUpperCase()}
+                        </div>
+                        <div>
+                            <div style="font-weight:600;font-size:14px;">${s.name}</div>
+                            <div style="color:var(--text-secondary);font-size:12px;">${s.email}</div>
+                            <div style="color:var(--text-muted);font-size:11px;margin-top:2px;">Requested: ${s.enrolledDate || 'Today'}</div>
+                        </div>
+                    </div>
+                    <div style="display:flex;gap:8px;">
+                        <button class="btn-primary" style="margin-top:0;background:var(--color-success);" onclick="approveStudent(${s.id}, '${s.name}')">✔ Accept</button>
+                        <button class="btn-danger" onclick="deleteStudent(${s.id}, '${s.name}', true)">✖ Reject</button>
+                    </div>
+                </div>`;
+        });
+
+        html += `</div>`;
+        container.innerHTML = html;
+    } catch(e) {
+        container.innerHTML = '<p style="color:var(--accent-danger)">Failed to load pending requests.</p>';
+    }
+}
+
+window.approveStudent = async function(studentId, studentName) {
+    try {
+        const res = await fetch(`${API_URL}/students/${studentId}/approve`, { method: 'POST' });
+        if (!res.ok) throw new Error();
+        // Refresh the pending tab with updated count
+        renderTeacherDashboard('pending');
+    } catch(e) {
+        alert(`Failed to approve ${studentName}.`);
+    }
 }
 
 async function loadTeacherStudents() {
@@ -1190,13 +1471,33 @@ async function loadTeacherStudents() {
         const response = await fetch(`${API_URL}/students`);
         const students = await response.json();
         if (students.length === 0) { container.innerHTML = '<div class="glass-panel"><p>No students enrolled yet.</p></div>'; return; }
-        let html = `<div class="glass-panel" style="overflow-x:auto;"><table class="students-table"><thead><tr><th>#</th><th>Name</th><th>Email</th><th>Enrolled</th><th>Report</th></tr></thead><tbody>`;
+        let html = `<div class="glass-panel" style="overflow-x:auto;"><table class="students-table"><thead><tr><th>#</th><th>Name</th><th>Email</th><th>Enrolled</th><th>Actions</th></tr></thead><tbody>`;
         students.forEach((s, i) => {
-            html += `<tr><td>${i+1}</td><td><strong>${s.name}</strong></td><td style="color:var(--text-secondary)">${s.email}</td><td style="color:var(--text-secondary)">${s.enrolledDate||'-'}</td><td><button class="btn-primary" style="padding:0.3rem 0.8rem;font-size:0.8rem;" onclick="renderStudentAnalytics(${s.id},'${s.name}')">View</button></td></tr>`;
+            html += `<tr><td>${i+1}</td><td><strong>${s.name}</strong></td><td style="color:var(--text-secondary)">${s.email}</td><td style="color:var(--text-secondary)">${s.enrolledDate||'-'}</td><td style="display:flex;gap:6px;align-items:center;"><button class="btn-primary" style="margin-top:0;" onclick="renderStudentAnalytics(${s.id},'${s.name}')">View</button><button class="btn-danger" onclick="deleteStudent(${s.id},'${s.name}')">Delete</button></td></tr>`;
         });
         html += '</tbody></table></div>';
         container.innerHTML = html;
     } catch(e) { container.innerHTML = '<p style="color:var(--accent-danger)">Failed to load students.</p>'; }
+}
+
+window.deleteStudent = async function(studentId, studentName, isRejection = false) {
+    const action = isRejection ? 'reject' : 'delete';
+    const msg = isRejection
+        ? `Reject and remove ${studentName}'s signup request? This cannot be undone.`
+        : `Delete ${studentName} and all of their data? This cannot be undone.`;
+    if (!confirm(msg)) return;
+
+    try {
+        const res = await fetch(`${API_URL}/students/${studentId}`, { method: 'DELETE' });
+        if (!res.ok) throw new Error();
+        if (isRejection) {
+            renderTeacherDashboard('pending'); // refresh pending tab
+        } else {
+            loadTeacherStudents(); // refresh active students list
+        }
+    } catch (e) {
+        alert(`Failed to ${action} ${studentName}.`);
+    }
 }
 
 async function loadTeacherTests() {
@@ -1208,13 +1509,34 @@ async function loadTeacherTests() {
             container.innerHTML = `<div class="glass-panel" style="text-align:center;padding:3rem;"><p style="font-size:1.1rem;margin-bottom:1rem;">No tests created yet.</p><button class="btn-primary" onclick="renderTeacherDashboard('create')">+ Create Your First Test</button></div>`;
             return;
         }
-        let html = '<div style="display:flex;flex-direction:column;gap:1rem;">';
+        let html = '<div style="display:flex;flex-direction:column;gap:0.75rem;">';
         tests.forEach(t => {
-            html += `<div class="glass-panel" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:1rem;"><div><h3 style="margin:0 0 0.25rem">${t.title}</h3><p style="color:var(--text-secondary);margin:0;font-size:0.85rem;">${t.description||''} Created: ${new Date(t.created_at).toLocaleDateString()}</p></div><button class="btn-primary" style="padding:0.4rem 1rem;" onclick="renderTestResults(${t.id},'${t.title}')">View Results</button></div>`;
+            html += `
+                <div class="glass-panel" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:1rem;padding:1rem 1.25rem;">
+                    <div>
+                        <div style="font-weight:600;font-size:14px;margin-bottom:3px;">${t.title}</div>
+                        <div style="color:var(--text-secondary);font-size:12px;">${t.description||'No description'} &nbsp;·&nbsp; Created: ${new Date(t.created_at).toLocaleDateString()}</div>
+                    </div>
+                    <div style="display:flex;gap:8px;align-items:center;">
+                        <button class="btn-primary" style="margin-top:0;" onclick="renderTestResults(${t.id},'${t.title}')">View Results</button>
+                        <button class="btn-danger" onclick="deleteTeacherTest(${t.id},'${t.title}')">Delete</button>
+                    </div>
+                </div>`;
         });
         html += '</div>';
         container.innerHTML = html;
     } catch(e) { container.innerHTML = '<p style="color:var(--accent-danger)">Failed to load tests.</p>'; }
+}
+
+window.deleteTeacherTest = async function(testId, testTitle) {
+    if (!confirm(`Delete "${testTitle}" and all its student results? This cannot be undone.`)) return;
+    try {
+        const res = await fetch(`${API_URL}/teacher/tests/${testId}`, { method: 'DELETE' });
+        if (!res.ok) throw new Error();
+        renderTeacherDashboard('tests'); // refresh list
+    } catch(e) {
+        alert('Failed to delete test. Please try again.');
+    }
 }
 
 function buildCreateTestForm() {
